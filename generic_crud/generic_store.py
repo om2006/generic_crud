@@ -41,21 +41,20 @@ class GenericStore(PostgresStore):
 
     @classmethod
     @coroutine
-    def search_entity(cls, _entity: SuperBase, term: str, fields: list, limit: int, offset: int, where_clause=None):
-        search_column = _entity.get_search_field()
+    def search_entity(cls, _entity: SuperBase, term: str, limit: int, offset: int, where_clause=None, fields: list=None):
+        fields = fields if fields else None
 
+        search_column = _entity.get_search_field()
         if not search_column:
             return None
 
-        if fields is not None and len(fields) == 0:
-            fields = [_entity.ID, search_column, _entity.STATUS]
-
         where_keys = where_clause if where_clause else {}
-        if term is not None:
-            where_keys[search_column] = ('ilike', term + '%%')
+        if term:
+            where_keys[search_column] = ('ilike', term + '%')
+        where_keys = [where_keys] if where_keys else None
 
         rows = yield from cls.select(table=_entity.TABLE_NAME, columns=fields, order_by=search_column,
-                                     where_keys=[where_keys], limit=limit, offset=offset)
+                                     where_keys=where_keys, limit=limit, offset=offset)
 
         rows = [dict(vars(row)) for row in rows]
         return rows

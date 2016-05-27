@@ -37,16 +37,6 @@ before_methods = defaultdict(dict)
 replace_methods = defaultdict(dict)
 
 
-class ApiTypes:
-    CREATE = 'create'
-    UPDATE = 'update'
-    GET_BASIC = 'get_basic'
-    GET = 'get'
-    SEARCH = 'search'
-    GET_ALL = 'get_all'
-    GET_BY_ID = 'get_by_id'
-
-
 def after_method(_entity, api_type):
     def decor(fun):
         after_methods[_entity][api_type] = fun
@@ -111,8 +101,8 @@ class GenericManager:
 
     @run_patch(ApiTypes.SEARCH)
     @coroutine
-    def search_entity(self, _entity: SuperBase, term: str, fields, limit: int, offset: int, where_clause=None):
-        search_result = yield from self.store.search_entity(_entity, term, fields, limit, offset, where_clause)
+    def search_entity(self, _entity: SuperBase, term: str, limit: int, offset: int, where_clause=None, fields=None):
+        search_result = yield from self.store.search_entity(_entity, term, limit, offset, where_clause, fields)
         return search_result
 
     @coroutine
@@ -171,8 +161,9 @@ class GenericManager:
 
         from_condition = ' as '.join(from_list[0])
         from_list = from_list[1:]
-        for table_alias in from_list:
-            from_condition += ' FULL OUTER JOIN ' + ' as '.join(table_alias) + ' on (' + join_where_list[table_alias[1]] + ')'
+        for table_name_alias in from_list:
+            from_condition += ' FULL OUTER JOIN ' + ' as '.join(table_name_alias) + ' on (' + join_where_list[
+                table_name_alias[1]] + ')'
 
         where_clause = ' WHERE ' if where_list else ''
         sql = "Select {} from {} {}".format(', '.join(select_list), from_condition,
@@ -221,12 +212,12 @@ class GenericManager:
         self.prepare_get_response(_entity, result, fields=fields)
 
         tasks = []
-        for field, r_foreign_entity_list in _entity.get_reverse_foreign_fields():
+        for field, r_foreign_entity_list in _entity.get_reverse_foreign_fields().items():
             for r_foreign_entity in r_foreign_entity_list:
                 if not fields or r_foreign_entity.TABLE_NAME in fields:
                     tasks.append(self._prepare_reverse_foreign_key_data(result, r_foreign_entity, _entity, field))
 
-        for field, foreign_entity in _entity.get_foreign_fields():
+        for field, foreign_entity in _entity.get_foreign_fields().items():
             if not fields or field in fields:
                 tasks.append(
                     self._prepare_foreign_key_data(result, _entity, field, foreign_entity, row, select_list,
@@ -259,7 +250,7 @@ class GenericManager:
                     args.insert(foreign_entity.val_position, val_)
                     res = yield from api_name(*args)
                     field_value = _entity.get_field_response_value(field, field_value, res)
-            elif type(datatype) == dict and IntArrayType == _entity.get_field_request_value(field, datatype)[0]:
+            elif type(datatype) == dict and [int] == _entity.get_field_request_value(field, datatype)[0]:
                 val_ = _entity.get_field_request_value(field, field_value)[0]
                 if val_:
                     res_list = yield from self.get_entity_single_query(foreign_entity, {foreign_entity.ID: ('in', tuple(val_))})
@@ -295,14 +286,14 @@ class GenericManager:
         }
         """
         insert_value = {}
-        for field in (_entity.B_fields + _entity.C_fields):
+        for field in _entity.get_fields():
             if field in values:
                 val = values.get(field)
                 val, is_exist = _entity.get_field_request_value(field, val)
                 if is_exist:
                     insert_value[field] = val
 
-        for field, fun in chain(_entity.B_auto_db_fields.items(), _entity.C_auto_db_fields.items()):
+        for field, fun in _entity.get_auto_db_fields().items():
             insert_value[field] = fun(_entity, values)
 
         return insert_value
@@ -310,13 +301,13 @@ class GenericManager:
     def prepare_get_response(self, _entity, response: dict, fields=[]):
         for key in response:
             if not fields or key in fields:
-                for fun in (_entity.C_condition_update_response + _entity.B_condition_update_response):
+                for fun in _entity.get_condition_update_response():
                     if fun(_entity, key, response):
                         break
-        for field, fun in _entity.get_auto_ui_fields():
+        for field, fun in _entity.get_auto_ui_fields().items():
             if not fields or field in fields:
                 response[field] = fun(_entity, field, response)
-        for key in chain(_entity.B_non_ui_fields, _entity.C_non_ui_fields):
+        for key in _entity.get_non_ui_fields():
             response.pop(key, None)
 
     def _get_psql_query_parmas(self, _entity, select_list, from_list, where_list: dict, parent_table='', fields=[]):
@@ -329,7 +320,7 @@ class GenericManager:
 
         from_entry = [_entity.TABLE_NAME, from_table_alias]
         from_list.append(from_entry)
-        for field, field_entity in _entity.get_foreign_fields():
+        for field, field_entity in _entity.get_foreign_fields().items():
             if not (parent_table or not fields):
                 if not (field in fields or field in _entity.get_non_ui_fields()):
                     continue
@@ -337,7 +328,7 @@ class GenericManager:
                 continue
             datatype = _entity.get_datatype(field)
             val_datatype = _entity.get_field_request_value(field, datatype)[0]
-            if val_datatype == IntArrayType or val_datatype == StrArrayType:
+            if val_datatype == [int] or val_datatype == [str]:
                 continue
             field_table_alias = self._get_psql_query_parmas(field_entity, select_list, from_list, where_list,
                                                             from_table_alias)
