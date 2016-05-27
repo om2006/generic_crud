@@ -215,18 +215,17 @@ class GenericValidation:
         mandatory_fields = _entity.get_mandatory_fields()
         # if _entity == Products:
         #     yield from cls._product_name_formula_patch(values)
-        yield from cls.common_validate(_entity, values, mandatory_fields)
+        yield from cls.common_validate(_entity, values, mandatory_fields.copy())
 
     @classmethod
-    def common_validate(cls, _entity: SuperBase, values: dict, mandatory_fields=[], fields=[]):
+    def common_validate(cls, _entity: SuperBase, values: dict, mandatory_fields=[], fields=None):
         _id = values.get(_entity.ID)
 
         for field in mandatory_fields:
             cls._is_exist(values, field)
 
-        logging.debug(fields)
+        fields = [] if fields is None else fields
         fields += _entity.get_fields()
-        logging.debug(fields)
         for field in fields:
             if field in values:
                 data_type = _entity.get_datatype(field)
@@ -280,6 +279,7 @@ class GenericValidation:
                     if v is not None:
                         if field_entity == _entity and v == _id:
                             raise ValidationException(cls.self_is_self_error.format(foreign_field))
+                        response = None
                         if hasattr(field_entity, 'is_custom'):
                             api_name = getattr(getattr(cls.manager, field_entity.client_name), field_entity.api_name)
                             args = field_entity.args.copy()
