@@ -30,7 +30,7 @@ def lines(name):
 install_requires = [i for i in lines("requirements.txt") if '-e' not in i]
 
 setup(name='generic_crud',
-      version='1.0.0',
+      version='1.0.1',
       author='Om Jangir',
       author_email='omjangir2006@gmail.com',
       description='It create crud tcp apis',
